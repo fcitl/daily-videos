@@ -45,7 +45,7 @@ PEXELS_KEY    = os.environ["PEXELS_API_KEY"]
 ANTHROPIC_KEY = os.environ["ANTHROPIC_API_KEY"]
 
 EDGE_VOICE = os.environ.get("EDGE_VOICE", "en-GB-RyanNeural")
-PORTRAIT   = Path(os.environ.get("PORTRAIT_PATH", "assets/portrait.png"))
+PORTRAIT   = Path(os.environ.get("PORTRAIT_PATH", "portrait.png"))
 OUT_DIR    = Path(os.environ.get("OUT_DIR", "out"))
 REGION     = os.environ.get("REGION_CODE", "GB")
 
