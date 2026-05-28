@@ -1,0 +1,43 @@
+name: Post daily video to Buffer
+
+on:
+  schedule:
+    # 12:00 UTC every day. Adjust to taste.
+    # Note: GitHub runs scheduled workflows on a best-effort basis;
+    # delays of several minutes during peak load are normal. If you
+    # need precise timing, lean on Buffer's posting schedule instead
+    # and have this Action just feed the queue.
+    - cron: '0 12 * * *'
+
+  # Manual trigger from the Actions tab — useful for testing or
+  # posting an out-of-band clip without waiting for tomorrow.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Queue tag to post right now (e.g. queue-2026-05-28). Leave blank to use today.'
+        required: false
+        type: string
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write     # required to read & PATCH releases
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install --quiet requests
+
+      - name: Post to Buffer
+        env:
+          BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
+          OVERRIDE_TAG: ${{ inputs.tag }}
+        run: python actions_post.py
