@@ -25,8 +25,13 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install deps
-        run: pip install --quiet requests anthropic edge-tts
+      - name: Install system deps (ffmpeg + font for drawtext)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg fonts-dejavu-core
+
+      - name: Install Python deps
+        run: pip install --quiet -r requirements.txt
 
       - name: Generate Short
         env:

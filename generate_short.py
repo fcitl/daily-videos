@@ -19,7 +19,8 @@ Required env:
 
 Optional env:
   EDGE_VOICE     (default: en-GB-RyanNeural)
-  PORTRAIT_PATH  (default: assets/portrait.png)
+  PORTRAIT_PATH  (default: portrait.png; PIP overlay is skipped if absent)
+  FONT_PATH      (default: first DejaVu/Liberation bold font found on system)
   OUT_DIR        (default: out)
   REGION_CODE    (default: GB)
 """
@@ -50,6 +51,30 @@ OUT_DIR    = Path(os.environ.get("OUT_DIR", "out"))
 REGION     = os.environ.get("REGION_CODE", "GB")
 
 OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _resolve_font() -> str:
+    """Locate a bold TTF for drawtext. FONT_PATH wins; otherwise probe the
+    usual DejaVu/Liberation locations across Ubuntu runners and macOS."""
+    env = os.environ.get("FONT_PATH")
+    if env and Path(env).exists():
+        return env
+    candidates = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        "/Library/Fonts/Arial Bold.ttf",
+        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+    ]
+    for c in candidates:
+        if Path(c).exists():
+            return c
+    raise RuntimeError(
+        "No usable bold font found. Set FONT_PATH or install fonts-dejavu-core."
+    )
+
+
+FONT_PATH = _resolve_font()
 
 LLM = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
 LLM_MODEL = "claude-sonnet-4-5"
@@ -252,7 +277,7 @@ def compose(broll: list[Path], lines: list[str], voice: Path,
             f"[{i}:v]scale=1080:1920:force_original_aspect_ratio=increase,"
             f"crop=1080:1920,setsar=1,fps=30,"
             f"drawbox=x=0:y=1300:w=1080:h=620:color=black@0.55:t=fill,"
-            f"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVu-Sans-Bold.ttf"
+            f"drawtext=fontfile='{FONT_PATH}'"
             f":text='{_escape_drawtext(line)}'"
             f":fontcolor=white:fontsize=58:x=(w-text_w)/2:y=1440"
             f"[s{i}]"
@@ -261,19 +286,25 @@ def compose(broll: list[Path], lines: list[str], voice: Path,
     concat_in = "".join(f"[s{i}]" for i in range(len(broll)))
     chains.append(f"{concat_in}concat=n={len(broll)}:v=1:a=0[bg]")
 
-    portrait_idx = len(broll)
-    audio_idx    = len(broll) + 1
-    inputs += ["-i", str(PORTRAIT), "-i", str(voice)]
-
-    # Portrait top-right, clear of the bottom text bar
-    chains.append(f"[{portrait_idx}:v]scale=240:240[pip]")
-    chains.append("[bg][pip]overlay=W-w-50:80[final]")
+    use_portrait = PORTRAIT.exists()
+    if use_portrait:
+        portrait_idx = len(broll)
+        audio_idx    = len(broll) + 1
+        inputs += ["-i", str(PORTRAIT), "-i", str(voice)]
+        # Portrait top-right, clear of the bottom text bar
+        chains.append(f"[{portrait_idx}:v]scale=240:240[pip]")
+        chains.append("[bg][pip]overlay=W-w-50:80[final]")
+        video_out = "[final]"
+    else:
+        audio_idx = len(broll)
+        inputs += ["-i", str(voice)]
+        video_out = "[bg]"
 
     cmd = [
         "ffmpeg", "-y", "-loglevel", "warning",
         *inputs,
         "-filter_complex", ";".join(chains),
-        "-map", "[final]", "-map", f"{audio_idx}:a",
+        "-map", video_out, "-map", f"{audio_idx}:a",
         "-c:v", "libx264", "-preset", "medium", "-crf", "21", "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "192k",
         "-shortest", str(out_path),
@@ -285,8 +316,8 @@ def compose(broll: list[Path], lines: list[str], voice: Path,
 
 def main() -> int:
     if not PORTRAIT.exists():
-        print(f"Missing portrait PNG at {PORTRAIT}", file=sys.stderr)
-        return 1
+        print(f"No portrait PNG at {PORTRAIT} — rendering without PIP overlay.",
+              file=sys.stderr)
 
     print("[1/5] Finding top vehicle video of the last 24h…")
     video = top_vehicle_video()
