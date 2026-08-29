@@ -41,9 +41,9 @@ import edge_tts
 
 # --- config ------------------------------------------------------------------
 
-YOUTUBE_KEY   = os.environ["YOUTUBE_API_KEY"]
-PEXELS_KEY    = os.environ["PEXELS_API_KEY"]
-ANTHROPIC_KEY = os.environ["ANTHROPIC_API_KEY"]
+YOUTUBE_KEY   = os.environ["YOUTUBE_API_KEY"].strip()
+PEXELS_KEY    = os.environ["PEXELS_API_KEY"].strip()
+ANTHROPIC_KEY = os.environ["ANTHROPIC_API_KEY"].strip()
 
 EDGE_VOICE = os.environ.get("EDGE_VOICE", "en-GB-RyanNeural")
 PORTRAIT   = Path(os.environ.get("PORTRAIT_PATH", "portrait.png"))
@@ -82,11 +82,20 @@ LLM_MODEL = "claude-sonnet-4-5"
 NUM_LINES = 6
 
 
+def _check_response(r: requests.Response, label: str) -> None:
+    if r.ok:
+        return
+    detail = r.text[:500] if r.text else r.reason
+    raise RuntimeError(f"{label} failed ({r.status_code}): {detail}")
+
+
 # --- 1. YouTube discovery ----------------------------------------------------
 
 def top_vehicle_video() -> dict:
     """Return the most-viewed Autos/Vehicles video published in last 24h."""
-    since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    since = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
     r = requests.get(
         "https://www.googleapis.com/youtube/v3/search",
         params={
@@ -96,7 +105,7 @@ def top_vehicle_video() -> dict:
         },
         timeout=30,
     )
-    r.raise_for_status()
+    _check_response(r, "YouTube search")
     items = r.json().get("items", [])
     if not items:
         raise RuntimeError("YouTube returned no videos for the last 24h.")
@@ -106,7 +115,7 @@ def top_vehicle_video() -> dict:
         params={"key": YOUTUBE_KEY, "part": "snippet,statistics", "id": ids},
         timeout=30,
     )
-    r2.raise_for_status()
+    _check_response(r2, "YouTube videos")
     videos = r2.json()["items"]
     videos.sort(key=lambda v: int(v["statistics"].get("viewCount", 0)),
                 reverse=True)
