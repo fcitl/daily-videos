@@ -59,8 +59,9 @@ Put at least six appropriately licensed `.jpg`, `.jpeg`, `.png` or `.webp`
 images in `assets/broll/` and commit them to the branch run by GitHub Actions.
 Images are selected alphabetically; the first six are used each day. The repository
 is public, so only commit images you are permitted to redistribute publicly.
-Use general vehicle images that will not misrepresent the topic, and review
-the video before publishing. Without the images, generation fails before making
+The included [image sources](assets/broll/SOURCES.md) are CC0. Local images are
+labelled illustrative in the video and caption because they may not match the
+specific topic. Review the video before publishing. Without the images, generation fails before making
 API calls. If you have an active Pexels API key, set `BROLL_SOURCE=pexels` to
 use the previous automatic search instead.
 
