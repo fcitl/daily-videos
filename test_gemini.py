@@ -61,6 +61,13 @@ class GeminiTests(unittest.TestCase):
             with self.assertRaisesRegex(self.generator.requests.HTTPError, "429"):
                 self.generator._llm("prompt")
 
+    def test_pexels_auth_failure_is_not_treated_as_an_empty_search(self):
+        response = Mock(ok=False, status_code=401, text="Unauthorized")
+        with patch.object(self.generator.requests, "get", return_value=response) as get:
+            with self.assertRaisesRegex(RuntimeError, "Pexels search failed \\(401\\)"):
+                self.generator.fetch_broll(["car"])
+            self.assertEqual(get.call_count, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

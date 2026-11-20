@@ -243,7 +243,8 @@ def fetch_broll(keywords: list[str]) -> list[Path]:
             params={"query": kw, "orientation": "portrait", "per_page": 3},
             timeout=30,
         )
-        photos = r.json().get("photos", []) if r.status_code == 200 else []
+        _check_response(r, "Pexels search")
+        photos = r.json().get("photos", [])
         if not photos:
             r = requests.get(
                 "https://api.pexels.com/v1/search",
@@ -251,12 +252,15 @@ def fetch_broll(keywords: list[str]) -> list[Path]:
                 params={"query": "car", "orientation": "portrait", "per_page": 3},
                 timeout=30,
             )
+            _check_response(r, "Pexels fallback search")
             photos = r.json().get("photos", [])
         if not photos:
             raise RuntimeError(f"No Pexels result for '{kw}' or fallback.")
         url = photos[0]["src"]["large2x"]
         dest = OUT_DIR / f"broll_{idx:02d}.jpg"
-        dest.write_bytes(requests.get(url, timeout=30).content)
+        image = requests.get(url, timeout=30)
+        image.raise_for_status()
+        dest.write_bytes(image.content)
         paths.append(dest)
     return paths
 
