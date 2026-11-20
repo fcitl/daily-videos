@@ -39,6 +39,7 @@ jobs:
           PEXELS_API_KEY:    ${{ secrets.PEXELS_API_KEY }}
           GEMINI_API_KEY:    ${{ secrets.GEMINI_API_KEY }}
           EDGE_VOICE:        ${{ vars.EDGE_VOICE || 'en-GB-RyanNeural' }}
+          BROLL_SOURCE:      ${{ vars.BROLL_SOURCE || 'local' }}
         run: python generate_short.py
 
       - name: Upload artefacts (debug)

@@ -9,9 +9,9 @@ Two scheduled GitHub Actions:
 
 1. **Generate** ([`.github/workflows/generate-daily.yml`](.github/workflows/generate-daily.yml), 05:00 UTC)
    runs [`generate_short.py`](generate_short.py):
-   - Finds the most-viewed Autos/Vehicles video of the last 24h (YouTube Data API).
+   - Finds recent popular Autos/Vehicles videos and asks Gemini to reject unrelated results.
    - Gemini extracts the topic and writes 6 on-screen lines + a narration paragraph.
-   - Pulls one portrait B-roll image per line from Pexels.
+   - Uses six user-supplied B-roll images, or optionally obtains them from Pexels.
    - Synthesises a voiceover with Edge TTS (free Microsoft Neural voice).
    - Composes a 9:16 MP4 with FFmpeg (B-roll + caption bar + optional portrait PIP).
    - Publishes the result as a GitHub release tagged `queue-<tomorrow>`.
@@ -34,7 +34,7 @@ Set these as **repository secrets** (Settings → Secrets and variables → Acti
 | Secret | Used by | Purpose |
 |---|---|---|
 | `YOUTUBE_API_KEY` | generate | YouTube Data API v3 |
-| `PEXELS_API_KEY` | generate | Pexels stock images |
+| `PEXELS_API_KEY` | generate | Only when `BROLL_SOURCE=pexels` |
 | `GEMINI_API_KEY` | generate | Gemini API (topic + script) |
 | `BUFFER_API_KEY` | post | Buffer publishing |
 
@@ -51,6 +51,22 @@ Optional **repository variables**:
 | Variable | Default | Purpose |
 |---|---|---|
 | `EDGE_VOICE` | `en-GB-RyanNeural` | Edge TTS voice |
+| `BROLL_SOURCE` | `local` | `local` images or `pexels` |
+
+### Local B-roll
+
+Put at least six appropriately licensed `.jpg`, `.jpeg`, `.png` or `.webp`
+images in `assets/broll/` and commit them to the branch run by GitHub Actions.
+Images are selected alphabetically; the first six are used each day. The repository
+is public, so only commit images you are permitted to redistribute publicly.
+Use general vehicle images that will not misrepresent the topic, and review
+the video before publishing. Without the images, generation fails before making
+API calls. If you have an active Pexels API key, set `BROLL_SOURCE=pexels` to
+use the previous automatic search instead.
+
+Gemini's topic filter and script prompts reduce irrelevant results and invented
+claims but do not guarantee accuracy. Always review the source, script and
+images before publishing; the workflows should stay disabled until reviewed.
 
 Other knobs read from the environment by [`generate_short.py`](generate_short.py):
 `PORTRAIT_PATH` (default `portrait.png`), `FONT_PATH`, `OUT_DIR`, `REGION_CODE`
@@ -69,7 +85,7 @@ works as normal. Drop one in and commit it to enable the overlay.
 pip install -r requirements.txt
 # ffmpeg + a bold TTF must be installed (e.g. `brew install ffmpeg`)
 
-export YOUTUBE_API_KEY=... PEXELS_API_KEY=... GEMINI_API_KEY=...
+export YOUTUBE_API_KEY=... GEMINI_API_KEY=...
 python generate_short.py            # writes out/today.mp4, script.txt, meta.json
 
 export BUFFER_API_KEY=...

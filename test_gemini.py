@@ -4,6 +4,7 @@ import sys
 import tempfile
 import types
 import unittest
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 
@@ -67,6 +68,32 @@ class GeminiTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "Pexels search failed \\(401\\)"):
                 self.generator.fetch_broll(["car"])
             self.assertEqual(get.call_count, 1)
+
+    def test_selects_relevant_video_and_rejects_bad_choices(self):
+        videos = [
+            {"snippet": {"title": "Blender balloon", "description": "Kitchen"}},
+            {"snippet": {"title": "New car", "description": "A road car"}},
+        ]
+        with patch.object(self.generator, "_llm", return_value='{"index": 1}'):
+            self.assertEqual(self.generator.select_vehicle_video(videos), videos[1])
+        for answer in ['{"index": null}', '{"index": 9}', '{"index": true}', 'not json']:
+            with self.subTest(answer=answer), patch.object(self.generator, "_llm", return_value=answer):
+                with self.assertRaises(RuntimeError):
+                    self.generator.select_vehicle_video(videos)
+
+    def test_local_broll_requires_six_images_and_uses_sorted_names(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            for name in ["b.jpg", "a.png", "c.jpeg", "d.webp", "e.jpg"]:
+                (path / name).touch()
+            with self.assertRaisesRegex(RuntimeError, "at least 6"):
+                self.generator.local_broll(path)
+            (path / "f.JPG").touch()
+            (path / "notes.txt").touch()
+            images = self.generator.local_broll(path)
+            self.assertEqual([p.name for p in images], [
+                "a.png", "b.jpg", "c.jpeg", "d.webp", "e.jpg", "f.JPG",
+            ])
 
 
 if __name__ == "__main__":

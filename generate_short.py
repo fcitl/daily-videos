@@ -4,7 +4,7 @@ generate_short.py — Build a daily vehicle Short.
 Pipeline:
   1. YouTube Data API   - top Autos/Vehicles video in last 24h
   2. Gemini             - extract trend, write 6 on-screen lines
-  3. Pexels             - one B-roll image per line
+  3. Local images or Pexels - one B-roll image per line
   4. Edge TTS           - free Microsoft Neural voiceover (en-GB)
   5. FFmpeg             - compose 9:16 MP4 with portrait PIP, drawtext lines,
                           voiceover audio
@@ -15,7 +15,7 @@ Output:
   out/meta.json
 
 Required env:
-  YOUTUBE_API_KEY, PEXELS_API_KEY, GEMINI_API_KEY
+  YOUTUBE_API_KEY, GEMINI_API_KEY
 
 Optional env:
   EDGE_VOICE     (default: en-GB-RyanNeural)
@@ -23,6 +23,8 @@ Optional env:
   FONT_PATH      (default: first DejaVu/Liberation bold font found on system)
   OUT_DIR        (default: out)
   REGION_CODE    (default: GB)
+  BROLL_DIR      (default: assets/broll)
+  BROLL_SOURCE   (default: local; set to pexels to use PEXELS_API_KEY)
 """
 
 from __future__ import annotations
@@ -41,13 +43,15 @@ import edge_tts
 # --- config ------------------------------------------------------------------
 
 YOUTUBE_KEY   = os.environ["YOUTUBE_API_KEY"].strip()
-PEXELS_KEY    = os.environ["PEXELS_API_KEY"].strip()
+PEXELS_KEY    = os.environ.get("PEXELS_API_KEY", "").strip()
 GEMINI_KEY    = os.environ["GEMINI_API_KEY"].strip()
 
 EDGE_VOICE = os.environ.get("EDGE_VOICE", "en-GB-RyanNeural")
 PORTRAIT   = Path(os.environ.get("PORTRAIT_PATH", "portrait.png"))
 OUT_DIR    = Path(os.environ.get("OUT_DIR", "out"))
 REGION     = os.environ.get("REGION_CODE", "GB")
+BROLL_SOURCE = os.environ.get("BROLL_SOURCE", "local").strip().lower()
+BROLL_DIR = Path(os.environ.get("BROLL_DIR", "assets/broll"))
 
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -117,19 +121,48 @@ def top_vehicle_video() -> dict:
     videos = r2.json()["items"]
     videos.sort(key=lambda v: int(v["statistics"].get("viewCount", 0)),
                 reverse=True)
-    return videos[0]
+    return select_vehicle_video(videos)
 
 
 # --- 2. LLM steps ------------------------------------------------------------
 
-def _llm(prompt: str, max_tokens: int = 400) -> str:
+def select_vehicle_video(videos: list[dict]) -> dict:
+    if not videos:
+        raise RuntimeError("YouTube returned no video details.")
+    candidates = [
+        {"index": i, "title": v["snippet"]["title"],
+         "description": v["snippet"].get("description", "")[:600]}
+        for i, v in enumerate(videos)
+    ]
+    raw = _llm(
+        "Select the first candidate that is clearly about a real road vehicle, "
+        "car news or a car event based only on the supplied title and description. "
+        "Do not infer relevance from category or invent facts. If none are clearly "
+        "relevant choose null. Reply ONLY with JSON: {\"index\": integer or null}.\n"
+        + json.dumps(candidates, ensure_ascii=False),
+        max_tokens=200, json_output=True,
+    )
+    try:
+        result = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("Gemini returned invalid vehicle selection JSON.") from exc
+    index = result.get("index") if isinstance(result, dict) else None
+    if type(index) is not int or not 0 <= index < len(videos):
+        raise RuntimeError("No clearly relevant vehicle video found; refusing to generate.")
+    return videos[index]
+
+
+def _llm(prompt: str, max_tokens: int = 400, *, json_output: bool = False) -> str:
     if not GEMINI_KEY:
         raise RuntimeError("GEMINI_API_KEY is empty")
+    config = {"maxOutputTokens": max(4096, max_tokens)}
+    if json_output:
+        config["responseMimeType"] = "application/json"
     response = requests.post(
         f"https://generativelanguage.googleapis.com/v1beta/models/{LLM_MODEL}:generateContent",
         headers={"x-goog-api-key": GEMINI_KEY},
         json={"contents": [{"parts": [{"text": prompt}]}],
-              "generationConfig": {"maxOutputTokens": max(4096, max_tokens)}},
+              "generationConfig": config},
         timeout=60,
     )
     response.raise_for_status()
@@ -158,8 +191,9 @@ Title: {title}
 Channel: {chan}
 Description: {desc}
 
-In 1-2 sentences, describe the SPECIFIC car, event, or news this is about.
-Reply with just the description. No preamble.""",
+In 1-2 sentences, describe the specific vehicle or event using only the supplied
+information. Do not invent details. If it is not clearly about a real road
+vehicle, respond exactly NOT_A_VEHICLE. No preamble.""",
         max_tokens=200,
     )
 
@@ -173,6 +207,8 @@ def write_lines_and_narration(topic: str) -> tuple[list[str], str]:
         f"""Topic: {topic}
 
 Write content for a {NUM_LINES * 3}-second vertical vehicle short.
+Use only facts explicitly stated in the topic. Do not invent specifications,
+names, events, or claims. If details are missing, stay general.
 
 Output TWO sections separated by `---`:
 
@@ -233,6 +269,17 @@ Output one query per line. No numbering, quotes, or explanation.""",
 
 
 # --- 3. Pexels B-roll --------------------------------------------------------
+
+def local_broll(directory: Path) -> list[Path]:
+    if not directory.is_dir():
+        raise RuntimeError(f"B-roll directory not found: {directory}")
+    images = sorted(p for p in directory.iterdir()
+                    if p.is_file() and p.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"})
+    if len(images) < NUM_LINES:
+        raise RuntimeError(f"Need at least {NUM_LINES} licensed images in {directory}; "
+                           f"found {len(images)}.")
+    return images[:NUM_LINES]
+
 
 def fetch_broll(keywords: list[str]) -> list[Path]:
     paths: list[Path] = []
@@ -343,6 +390,15 @@ def compose(broll: list[Path], lines: list[str], voice: Path,
 # --- main --------------------------------------------------------------------
 
 def main() -> int:
+    if BROLL_SOURCE == "local":
+        broll = local_broll(BROLL_DIR)
+    elif BROLL_SOURCE == "pexels":
+        if not PEXELS_KEY:
+            raise RuntimeError("PEXELS_API_KEY is required for Pexels B-roll.")
+        broll = []
+    else:
+        raise RuntimeError("BROLL_SOURCE must be 'local' or 'pexels'.")
+
     if not PORTRAIT.exists():
         print(f"No portrait PNG at {PORTRAIT} — rendering without PIP overlay.",
               file=sys.stderr)
@@ -355,15 +411,21 @@ def main() -> int:
 
     print("[2/5] Topic, on-screen lines, narration…")
     topic = extract_topic(video)
+    if topic.strip().upper() == "NOT_A_VEHICLE":
+        raise RuntimeError("Source is not a vehicle video; refusing to generate.")
     print(f"      topic: {topic}")
     lines, narration = write_lines_and_narration(topic)
     for i, ln in enumerate(lines, 1):
         print(f"      L{i}. {ln}")
 
     print("[3/5] B-roll…")
-    kws = broll_keywords(topic)
-    print(f"      keywords: {kws}")
-    broll = fetch_broll(kws)
+    kws = []
+    if BROLL_SOURCE == "pexels":
+        kws = broll_keywords(topic)
+        print(f"      keywords: {kws}")
+        broll = fetch_broll(kws)
+    else:
+        print(f"      using {len(broll)} local images from {BROLL_DIR}")
 
     print("[4/5] Voiceover (Edge TTS)…")
     voice = OUT_DIR / "voice.mp3"
