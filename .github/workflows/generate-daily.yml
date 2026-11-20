@@ -37,7 +37,7 @@ jobs:
         env:
           YOUTUBE_API_KEY:   ${{ secrets.YOUTUBE_API_KEY }}
           PEXELS_API_KEY:    ${{ secrets.PEXELS_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY:    ${{ secrets.GEMINI_API_KEY }}
           EDGE_VOICE:        ${{ vars.EDGE_VOICE || 'en-GB-RyanNeural' }}
         run: python generate_short.py
 

@@ -10,7 +10,7 @@ Two scheduled GitHub Actions:
 1. **Generate** ([`.github/workflows/generate-daily.yml`](.github/workflows/generate-daily.yml), 05:00 UTC)
    runs [`generate_short.py`](generate_short.py):
    - Finds the most-viewed Autos/Vehicles video of the last 24h (YouTube Data API).
-   - Claude extracts the topic and writes 6 on-screen lines + a narration paragraph.
+   - Gemini extracts the topic and writes 6 on-screen lines + a narration paragraph.
    - Pulls one portrait B-roll image per line from Pexels.
    - Synthesises a voiceover with Edge TTS (free Microsoft Neural voice).
    - Composes a 9:16 MP4 with FFmpeg (B-roll + caption bar + optional portrait PIP).
@@ -35,10 +35,16 @@ Set these as **repository secrets** (Settings → Secrets and variables → Acti
 |---|---|---|
 | `YOUTUBE_API_KEY` | generate | YouTube Data API v3 |
 | `PEXELS_API_KEY` | generate | Pexels stock images |
-| `ANTHROPIC_API_KEY` | generate | Claude (topic + script) |
+| `GEMINI_API_KEY` | generate | Gemini API (topic + script) |
 | `BUFFER_API_KEY` | post | Buffer publishing |
 
 `GITHUB_TOKEN` is provided automatically.
+
+Create a Gemini API key in [Google AI Studio](https://aistudio.google.com/apikey)
+and store it as `GEMINI_API_KEY`. The YouTube discovery key is separate.
+Google AI subscriptions do not automatically provide Gemini API quota; check
+the project's [API pricing](https://ai.google.dev/gemini-api/docs/pricing).
+The generator uses `gemini-3.1-flash-lite`.
 
 Optional **repository variables**:
 
@@ -63,7 +69,7 @@ works as normal. Drop one in and commit it to enable the overlay.
 pip install -r requirements.txt
 # ffmpeg + a bold TTF must be installed (e.g. `brew install ffmpeg`)
 
-export YOUTUBE_API_KEY=... PEXELS_API_KEY=... ANTHROPIC_API_KEY=...
+export YOUTUBE_API_KEY=... PEXELS_API_KEY=... GEMINI_API_KEY=...
 python generate_short.py            # writes out/today.mp4, script.txt, meta.json
 
 export BUFFER_API_KEY=...

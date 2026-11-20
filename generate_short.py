@@ -3,7 +3,7 @@ generate_short.py — Build a daily vehicle Short.
 
 Pipeline:
   1. YouTube Data API   - top Autos/Vehicles video in last 24h
-  2. Anthropic          - extract trend, write 6 on-screen lines
+  2. Gemini             - extract trend, write 6 on-screen lines
   3. Pexels             - one B-roll image per line
   4. Edge TTS           - free Microsoft Neural voiceover (en-GB)
   5. FFmpeg             - compose 9:16 MP4 with portrait PIP, drawtext lines,
@@ -15,7 +15,7 @@ Output:
   out/meta.json
 
 Required env:
-  YOUTUBE_API_KEY, PEXELS_API_KEY, ANTHROPIC_API_KEY
+  YOUTUBE_API_KEY, PEXELS_API_KEY, GEMINI_API_KEY
 
 Optional env:
   EDGE_VOICE     (default: en-GB-RyanNeural)
@@ -36,14 +36,13 @@ from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
 import requests
-import anthropic
 import edge_tts
 
 # --- config ------------------------------------------------------------------
 
 YOUTUBE_KEY   = os.environ["YOUTUBE_API_KEY"].strip()
 PEXELS_KEY    = os.environ["PEXELS_API_KEY"].strip()
-ANTHROPIC_KEY = os.environ["ANTHROPIC_API_KEY"].strip()
+GEMINI_KEY    = os.environ["GEMINI_API_KEY"].strip()
 
 EDGE_VOICE = os.environ.get("EDGE_VOICE", "en-GB-RyanNeural")
 PORTRAIT   = Path(os.environ.get("PORTRAIT_PATH", "portrait.png"))
@@ -76,8 +75,7 @@ def _resolve_font() -> str:
 
 FONT_PATH = _resolve_font()
 
-LLM = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
-LLM_MODEL = "claude-sonnet-4-5"
+LLM_MODEL = "gemini-3.1-flash-lite"
 
 NUM_LINES = 6
 
@@ -125,11 +123,28 @@ def top_vehicle_video() -> dict:
 # --- 2. LLM steps ------------------------------------------------------------
 
 def _llm(prompt: str, max_tokens: int = 400) -> str:
-    msg = LLM.messages.create(
-        model=LLM_MODEL, max_tokens=max_tokens,
-        messages=[{"role": "user", "content": prompt}],
+    if not GEMINI_KEY:
+        raise RuntimeError("GEMINI_API_KEY is empty")
+    response = requests.post(
+        f"https://generativelanguage.googleapis.com/v1beta/models/{LLM_MODEL}:generateContent",
+        headers={"x-goog-api-key": GEMINI_KEY},
+        json={"contents": [{"parts": [{"text": prompt}]}],
+              "generationConfig": {"maxOutputTokens": max(4096, max_tokens)}},
+        timeout=60,
     )
-    return msg.content[0].text.strip()
+    response.raise_for_status()
+    result = response.json()
+    candidates = result.get("candidates", [])
+    if not candidates:
+        raise RuntimeError(f"Gemini returned no candidate: {result.get('promptFeedback', {})}")
+    candidate = candidates[0]
+    if candidate.get("finishReason") != "STOP":
+        raise RuntimeError(f"Gemini did not complete: {candidate.get('finishReason', 'unknown')}")
+    parts = candidate.get("content", {}).get("parts", [])
+    text = "".join(part.get("text", "") for part in parts if not part.get("thought")).strip()
+    if not text:
+        raise RuntimeError("Gemini returned empty text")
+    return text
 
 
 def extract_topic(video: dict) -> str:
