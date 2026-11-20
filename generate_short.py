@@ -348,13 +348,9 @@ def compose(broll: list[Path], lines: list[str], voice: Path,
     inputs: list[str] = []
     for i, (img, line) in enumerate(zip(broll, lines)):
         inputs += ["-loop", "1", "-t", f"{per_scene:.3f}", "-i", str(img)]
-        label = (f"drawtext=fontfile='{FONT_PATH}':text='ILLUSTRATIVE IMAGE':"
-                 "fontcolor=white:fontsize=30:box=1:boxcolor=black@0.65:"
-                 "boxborderw=8:x=30:y=80,") if BROLL_SOURCE == "local" else ""
         chains.append(
             f"[{i}:v]scale=1080:1920:force_original_aspect_ratio=increase,"
             f"crop=1080:1920,setsar=1,fps=30,"
-            f"{label}"
             f"drawbox=x=0:y=1300:w=1080:h=620:color=black@0.55:t=fill,"
             f"drawtext=fontfile='{FONT_PATH}'"
             f":text='{_escape_drawtext(line)}'"
@@ -441,10 +437,7 @@ def main() -> int:
     out_mp4 = OUT_DIR / "today.mp4"
     compose(broll, lines, voice, dur, out_mp4)
 
-    caption = "\n".join(lines) + "\n"
-    if BROLL_SOURCE == "local":
-        caption += "\nIllustrative images; vehicles shown may not match the topic.\n"
-    (OUT_DIR / "script.txt").write_text(caption,
+    (OUT_DIR / "script.txt").write_text("\n".join(lines) + "\n",
                                          encoding="utf-8")
     (OUT_DIR / "meta.json").write_text(json.dumps({
         "source_video_id": video["id"],

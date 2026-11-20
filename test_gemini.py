@@ -95,15 +95,6 @@ class GeminiTests(unittest.TestCase):
                 "a.png", "b.jpg", "c.jpeg", "d.webp", "e.jpg", "f.JPG",
             ])
 
-    def test_local_broll_is_labelled_in_video(self):
-        with patch.object(self.generator, "BROLL_SOURCE", "local"), \
-             patch.object(self.generator, "PORTRAIT", Path("/nonexistent/portrait.png")), \
-             patch.object(self.generator.subprocess, "run") as run:
-            self.generator.compose([Path("image.jpg")], ["caption"], Path("voice.mp3"),
-                                   3.0, Path("video.mp4"))
-            command = run.call_args.args[0]
-            self.assertIn("ILLUSTRATIVE IMAGE", command[command.index("-filter_complex") + 1])
-
 
 if __name__ == "__main__":
     unittest.main()
